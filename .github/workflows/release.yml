@@ -1,0 +1,46 @@
+name: Release
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Read version and refuse to replace an existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Info.plist)
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "Release v$version already exists. Bump Info.plist first."
+            exit 1
+          fi
+          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+      - name: Build
+        run: ./build.sh
+      - name: Create checksum and Homebrew definition
+        run: |
+          archive="build/ThunderAudio-$APP_VERSION-macOS-arm64.zip"
+          shasum -a 256 "$archive" > build/SHA256SUMS.txt
+          python3 scripts/make-cask.py --repo "$GITHUB_REPOSITORY" --version "$APP_VERSION" --archive "$archive"
+      - name: Publish versioned assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$APP_VERSION" --target "$GITHUB_SHA" --title "ThunderAudio $APP_VERSION" --generate-notes "build/ThunderAudio-$APP_VERSION-macOS-arm64.zip" build/SHA256SUMS.txt
+      - name: Update Homebrew entry on main
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Casks/thunderaudio.rb
+          if ! git diff --cached --quiet; then
+            git commit -m "Update Homebrew cask to $APP_VERSION"
+            git push origin HEAD:main
+          fi

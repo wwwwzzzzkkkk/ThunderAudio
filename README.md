@@ -1,9 +1,36 @@
-# ThunderAudio 雷雳音频桥（原型 v0.2）
+# ThunderAudio 雷雳音频桥
+
+<img src="Resources/AppIcon.png" width="128" alt="ThunderAudio 图标">
+
+当前版本：**0.3.0** · Apple Silicon · macOS 13+
+
+[下载最新版](https://github.com/wwwwzzzzkkkk/ThunderAudio/releases/latest) · [版本记录](CHANGELOG.md)
 
 macOS 原生菜单栏应用。同一个应用放到两台 Mac：Mac mini 采集系统声音，MacBook 通过内置扬声器播放。支持 Apple Silicon、macOS 13 及以上；无第三方依赖、无需虚拟声卡或内核扩展。
 
 **这是用户空间的网络音频应用。雷电线提供 Thunderbolt Bridge IP 网络，另一台 Mac 的扬声器不会成为 macOS「声音输出」列表里的雷电硬件。**
 
+
+
+## Homebrew 安装和更新
+
+同一个 GitHub 仓库同时提供 Cask；首次在每台 Mac 执行：
+
+```sh
+brew tap wwwwzzzzkkkk/thunderaudio https://github.com/wwwwzzzzkkkk/ThunderAudio.git
+brew install --cask wwwwzzzzkkkk/thunderaudio/thunderaudio
+```
+
+以后先退出两端 ThunderAudio，再分别更新：
+
+```sh
+brew update
+brew upgrade --cask wwwwzzzzkkkk/thunderaudio/thunderaudio
+```
+
+Homebrew 会从 GitHub Release 下载带版本号的安装包并校验 SHA-256。没有内置静默更新器，`brew update` 只刷新清单，`brew upgrade` 才会替换应用。若 `/Applications` 已有手动安装的同名应用，先退出并移走旧副本，再交给 Homebrew 安装；不用删除用户数据或录制权限。
+
+本版本为临时签名的开发构建，尚未 Developer ID 签名和公证。Homebrew 安装不代表通过 Apple 公证；首次打开或重建后，仍可能需要系统允许打开和重新授予录制权限。不要关闭 Gatekeeper 或 SIP。两台 Mac 应使用兼容的同一版本。
 
 ## v0.2：播放位置切换与合盖提示
 
@@ -21,7 +48,7 @@ MacBook 接收端会显示系统供电和外接显示器检测信息。**电源�
 
 系统睡眠前暂停音频并恢复发送端静音状态；唤醒后接收端重新监听、发送端尝试重连。没有添加绕过合盖睡眠保护的功能。
 
-屏幕共享与音频桥同时启用时，你已观察到重复播放 / 无声；需要远程操作时先关闭屏幕共享音频（若系统提供），或断开屏幕共享后听音。
+屏幕共享与音频桥同时启用时，可能出现重复播放 / 无声；需要远程操作时先关闭屏幕共享音频（若系统提供），或断开屏幕共享后听音。
 
 ## 已实现
 
@@ -35,7 +62,7 @@ MacBook 接收端会显示系统供电和外接显示器检测信息。**电源�
 
 ## 先运行
 
-1. 解压 `build/ThunderAudio-0.2.0-macOS-arm64.zip`，将其中的 `ThunderAudio.app` 复制到两台 Mac 的「应用程序」。这是本机临时签名的开发构建，没有 Developer ID 公证。若另一台 Mac 拦截，检查来源后使用系统「隐私与安全性」提供的打开方式，或在那台 Mac 从源码构建；不要关闭 Gatekeeper / SIP。
+1. 解压 `build/ThunderAudio-0.3.0-macOS-arm64.zip`，将其中的 `ThunderAudio.app` 复制到两台 Mac 的「应用程序」。这是本机临时签名的开发构建，没有 Developer ID 公证。若另一台 Mac 拦截，检查来源后使用系统「隐私与安全性」提供的打开方式，或在那台 Mac 从源码构建；不要关闭 Gatekeeper / SIP。
 2. 启动应用，从屏幕右上角波形图标打开菜单面板。
 3. MacBook 选择「接收端」。生成随机口令，复制到 Mac mini。先保持 MacBook 开盖；允许本地网络和防火墙访问，然后启动接收。
 4. Mac mini 选择「发送端」，填同一口令。选择发现的 MacBook，或输入它的网桥 IPv4 地址，点击启动。
@@ -89,7 +116,7 @@ xcodebuild -project ThunderAudio.xcodeproj -target ThunderAudio -configuration R
 open build/ThunderAudio.app
 ```
 
-脚本使用 Swift 5 语言模式和 macOS 13 deployment target；在临时目录中构建和签名，输出 `build/ThunderAudio.app` 和可分发的 `build/ThunderAudio-0.2.0-macOS-arm64.zip`。只清理临时构建产物的扩展属性，不修改系统设置。推荐通过 ZIP 复制应用，避免云同步文件夹在签名过程中附加 Finder 元数据。二进制是 arm64，不支持 Intel Mac。重建同一 Bundle ID 的临时签名应用后，系统可能要求重新授予录制权限；正式稳定签名可减少身份变化。
+脚本使用 Swift 5 语言模式和 macOS 13 deployment target；在临时目录中构建和签名，输出 `build/ThunderAudio.app` 和可分发的 `build/ThunderAudio-0.3.0-macOS-arm64.zip`。只清理临时构建产物的扩展属性，不修改系统设置。推荐通过 ZIP 复制应用，避免云同步文件夹在签名过程中附加 Finder 元数据。二进制是 arm64，不支持 Intel Mac。重建同一 Bundle ID 的临时签名应用后，系统可能要求重新授予录制权限；正式稳定签名可减少身份变化。
 
 ## 合盖、休眠与唤醒
 
@@ -153,3 +180,14 @@ open build/ThunderAudio.app
 - `build.sh` / `test.sh`：独立构建 / 测试脚本。
 
 新增源码：`LocalOutput.swift` 管理可恢复的本机静音；`SleepStatus.swift` 读取供电与系统显示器信息。
+
+## 后续版本发布
+
+代码和历史 tag 保存在本仓库。修改后提交到 `main` 会运行构建检查。硬件音频测试 `./test.sh` 需要可用内置输出设备，未在 GitHub 的虚拟机 runner 上自动运行。
+
+1. 修改 `Info.plist` 的版本号和构建号，更新菜单版本文字、`CHANGELOG.md`，提交到 `main`。
+2. 在 GitHub Actions 选择 **Release → Run workflow**，从 `main` 发布。工作流构建安装包、创建版本 tag / Release、上传校验和，并提交新的 `Casks/thunderaudio.rb` 到 `main`。
+3. 工作流拒绝覆盖已有同版本 Release。新版本的安装包和 Cask 校验和来自同一次构建，不要用另一次重建的文件替换已发布资产。
+4. 若仓库分支保护阻止工作流推送，Release 仍可能已经发布；根据日志手动提交生成的 Cask 后再更新 Homebrew。无需向其他仓库配置访问令牌。
+
+图标的可编辑 SVG 与原生绘制脚本在 `Resources/` 和 `scripts/`。修改后运行 `./scripts/build-icon.sh`，提交 PNG 和 ICNS；正常构建直接使用已提交的 ICNS。

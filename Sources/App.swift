@@ -14,7 +14,7 @@ struct Panel: View {
     @ObservedObject var bridge: Bridge
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("ThunderAudio 雷雳音频桥 0.2").font(.headline)
+            Text("ThunderAudio 雷雳音频桥 0.3").font(.headline)
             Picker("本机角色", selection: $bridge.receiver) {
                 Text("接收端 · MacBook").tag(true)
                 Text("发送端 · Mac mini").tag(false)

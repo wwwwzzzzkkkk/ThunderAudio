@@ -9,6 +9,8 @@ thunderaudio_stage=$(mktemp -d "${TMPDIR:-/tmp}/ThunderAudio-build.XXXXXX")
 trap 'rm -rf "$thunderaudio_stage"' EXIT
 mkdir -p "$thunderaudio_stage/ThunderAudio.app/Contents/MacOS"
 xcrun swiftc -swift-version 5 -O -target arm64-apple-macos13.0 Sources/*.swift -o "$thunderaudio_stage/ThunderAudio.app/Contents/MacOS/ThunderAudio"
+mkdir -p "$thunderaudio_stage/ThunderAudio.app/Contents/Resources"
+cp Resources/AppIcon.icns "$thunderaudio_stage/ThunderAudio.app/Contents/Resources/AppIcon.icns"
 cp Info.plist "$thunderaudio_stage/ThunderAudio.app/Contents/Info.plist"
 xattr -cr "$thunderaudio_stage/ThunderAudio.app"
 codesign --force --sign - "$thunderaudio_stage/ThunderAudio.app"

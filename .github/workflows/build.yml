@@ -1,0 +1,20 @@
+name: Build
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build signed development app
+        run: ./build.sh
+      - name: Validate Xcode project
+        run: xcodebuild -quiet -project ThunderAudio.xcodeproj -target ThunderAudio -configuration Release CODE_SIGNING_ALLOWED=NO SYMROOT="$RUNNER_TEMP/products" OBJROOT="$RUNNER_TEMP/objects" build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ThunderAudio-development-build
+          path: build/ThunderAudio-*-macOS-arm64.zip
