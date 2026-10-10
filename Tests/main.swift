@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import Network
 import Security
 import CoreAudio
@@ -103,16 +104,39 @@ check(reportPacket?.0 == 12, "queue report kind")
 let report = try JSONSerialization.jsonObject(with: reportPacket!.1) as! [String: Int]
 check(report["frames"] != nil && report["catchUps"] != nil, "queue telemetry fields")
 let queueTest = Playback()
-try queueTest.start()
 queueTest.lowLatency = true
-queueTest.append(Data(repeating: 0, count: 4800 * 8))
-check(queueTest.pendingFrames == 2880, "oversized low latency block trimmed to 60 ms")
+let signalFrames = 7200
+let signal: [Float] = (0..<signalFrames).flatMap { frame -> [Float] in
+    let value = Float(sin(Double(frame) * 2 * Double.pi * 440 / 48000)) * 0.2
+    return [value, value]
+}
+let signalData = signal.withUnsafeBytes { Data($0) }
+queueTest.append(Data(signalData.prefix(4800 * 8)))
+check(queueTest.pendingFrames == 4800 && queueTest.lowLatency, "100 ms capture block remains intact in low latency")
 let oldGeneration = queueTest.generation
-queueTest.append(Data(repeating: 0, count: 960 * 8))
-check(queueTest.pendingFrames == 960 && queueTest.generation > oldGeneration, "stale queue flushed and newest audio kept")
-queueTest.lowLatency = false
-check(queueTest.pendingFrames == 0 && queueTest.queueLimitFrames == 9600, "normal mode clears queue and restores 200 ms cap")
+queueTest.append(Data(signalData.dropFirst(4800 * 8)))
+check(queueTest.pendingFrames == 7200 && !queueTest.lowLatency, "overflow falls back without losing samples")
+check(queueTest.generation == oldGeneration && queueTest.dropped == 0 && queueTest.fallbacks == 1, "fallback does not stop player or drop audio")
+// Render a non-silent continuous waveform offline, so dropped tails and repeated
+// player stops cannot pass unnoticed as they do with silent PCM.
+try queueTest.engine.enableManualRenderingMode(.offline, format: queueTest.format, maximumFrameCount: 1024)
+try queueTest.engine.start()
+queueTest.player.volume = queueTest.volume
+queueTest.player.play()
+let rendered = AVAudioPCMBuffer(pcmFormat: queueTest.format, frameCapacity: 1024)!
+var output: [Float] = []
+while output.count < signalFrames {
+    let count = AVAudioFrameCount(min(1024, signalFrames - output.count))
+    let status = try queueTest.engine.renderOffline(count, to: rendered)
+    check(status == .success, "offline audio render succeeds")
+    output.append(contentsOf: UnsafeBufferPointer(start: rendered.floatChannelData![0], count: Int(rendered.frameLength)))
+}
+let expected = stride(from: 0, to: signal.count, by: 2).map { signal[$0] * queueTest.volume }
+let maxError = zip(output, expected).map { abs($0 - $1) }.max() ?? 1
+check(maxError < 0.0001, "non-silent samples stay continuous across fallback and block boundary")
 queueTest.stop()
+check(queueTest.pendingFrames == 0, "stop resets queue timeline")
+print("PASS: 100 ms block intact, low latency fallback preserves non-silent waveform, no destructive queue chase")
 selectMode(0)
 check(!bridge.receiverRemoteEnabled, "local mode stops remote player")
 let before = bridge.receiverFrames

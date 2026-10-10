@@ -118,12 +118,6 @@ final class Bridge: ObservableObject {
                 }
             } } }
         monitor.start(queue: DispatchQueue(label: "network.interfaces"))
-        playback.completed = { [weak self] frames, generation in
-            DispatchQueue.main.async {
-                guard let self, generation == self.playback.generation else { return }
-                self.playback.pendingFrames = max(0, self.playback.pendingFrames - frames)
-            }
-        }
         refreshDiscovery()
         pendingAutoStart = autoConnect && rememberSecret && restoredCredential && preferences.bool(forKey: "configured")
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.tick() }
@@ -322,7 +316,13 @@ final class Bridge: ObservableObject {
         switch kind {
         case 3:
             guard receiver, body.count > 0, body.count % 8 == 0 else { disconnect("无效音频数据"); return }
-            if receiverRemoteEnabled { receiverFrames += body.count / 8; playback.append(body) }
+            if receiverRemoteEnabled {
+                receiverFrames += body.count / 8; playback.append(body)
+                if lowLatency && !playback.lowLatency {
+                    lowLatency = false
+                    status = "队列超过低延迟预算，已自动恢复普通模式以保持声音连续"
+                }
+            }
         case 6:
             guard receiver, body.count == 1, body[0] <= 1 else { disconnect("无效播放切换"); return }
             receiverRemoteEnabled = body[0] == 1
@@ -370,7 +370,7 @@ final class Bridge: ObservableObject {
         let id = attempt; let source = Capture(); capture = source
         source.audio = { [weak self] data in DispatchQueue.main.async {
             guard let self, self.attempt == id, self.authenticated, self.remotePlayback, self.remoteConfirmed else { return }
-            if self.inFlight > (self.lowLatency ? 23040 : 192000) { self.discarded += 1; return }
+            if self.inFlight > 192000 { self.discarded += 1; return }
             self.send(3, data)
         } }
         source.failed = { [weak self] error in DispatchQueue.main.async { if self?.attempt == id { self?.disconnect("采集停止：" + error) } } }

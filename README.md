@@ -2,7 +2,7 @@
 
 <img src="Resources/AppIcon.png" width="128" alt="ThunderAudio 图标">
 
-当前版本：**0.6.0** · Apple Silicon · macOS 13+
+当前版本：**0.6.1** · Apple Silicon · macOS 13+
 
 [下载最新版](https://github.com/wwwwzzzzkkkk/ThunderAudio/releases/latest) · [版本记录](CHANGELOG.md)
 
@@ -122,7 +122,7 @@ xcodebuild -project ThunderAudio.xcodeproj -target ThunderAudio -configuration R
 open build/ThunderAudio.app
 ```
 
-脚本使用 Swift 5 语言模式和 macOS 13 deployment target；在临时目录中构建和签名，输出 `build/ThunderAudio.app` 和可分发的 `build/ThunderAudio-0.6.0-macOS-arm64.zip`。只清理临时构建产物的扩展属性，不修改系统设置。推荐通过 ZIP 复制应用，避免云同步文件夹在签名过程中附加 Finder 元数据。二进制是 arm64，不支持 Intel Mac。重建同一 Bundle ID 的临时签名应用后，系统可能要求重新授予录制权限；正式稳定签名可减少身份变化。
+脚本使用 Swift 5 语言模式和 macOS 13 deployment target；在临时目录中构建和签名，输出 `build/ThunderAudio.app` 和可分发的 `build/ThunderAudio-0.6.1-macOS-arm64.zip`。只清理临时构建产物的扩展属性，不修改系统设置。推荐通过 ZIP 复制应用，避免云同步文件夹在签名过程中附加 Finder 元数据。二进制是 arm64，不支持 Intel Mac。重建同一 Bundle ID 的临时签名应用后，系统可能要求重新授予录制权限；正式稳定签名可减少身份变化。
 
 ## 合盖、休眠与唤醒
 
@@ -203,6 +203,6 @@ open build/ThunderAudio.app
 ### 0.5 音量控制
 发送端选择 MacBook 播放时，可调整 MacBook 音量；控制的是 ThunderAudio 播放音量，不改变 MacBook 系统总音量或其他应用。接收端调整也同步回发送端。重连时采用发送端滑块值。协议升级为 TA3，两台 Mac 都需更新至 0.5 或以上。
 
-### 0.6 低延迟模式
-两端均需更新。发送端开启低延迟，接收端同步为 60 ms 播放队列上限（普通为 200 ms）；积压时清空旧队列并保留最新音频，可能有短暂跳音。超过上限的单个音频块保留末尾 60 ms。模式改变会清空已有队列。发送端也缩短允许的传输积压。模式会保存；重连采用发送端设置。
-Mac mini 每秒查询 MacBook 队列并显示估算值、丢弃块和追赶次数；不再用 Mac mini 自己的空播放队列代替远端。此值包含音频块和完成回调误差，不是端到端实测延迟。60 ms 是软件队列限制，不保证实际总延迟；网络抖动大时请关闭。
+### 0.6.1 低延迟模式修正
+低延迟模式尝试 120 ms 软件队列预算，普通模式为 200 ms。超过低延迟预算时自动回退普通模式并同步两端开关，保留已排队和新到达的音频，不再反复停止播放节点或裁切音频块。单个采集块保持完整，可能超过标称预算；严重网络积压时普通模式仍可能丢块。模式切换不清空队列，已有积压会自然播放完。
+队列估算改用播放器渲染时间轴，不再等待播放完成通知；估算不含输出驱动和扬声器延迟。发送端传输积压阈值恢复普通值，避免低延迟开关直接引入发送丢块。TA4 协议保持不变，与 0.6.0 兼容；为获得修复两台 Mac 都建议更新，接收端必须更新。真实双机听感仍需验证，不能保证端到端延迟。

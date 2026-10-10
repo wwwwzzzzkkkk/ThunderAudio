@@ -65,37 +65,40 @@ final class Playback {
     let engine = AVAudioEngine()
     let player = AVAudioPlayerNode()
     let format = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 2)!
-    var pendingFrames = 0
-    var lowLatency = false { didSet {
-        if lowLatency != oldValue { flushQueue() }
-    } }
-    var queueLimitFrames: Int { lowLatency ? 2880 : 9600 }
-    var catchUps = 0
-    func flushQueue() {
-        generation += 1
-        let wasPlaying = player.isPlaying
-        player.stop()
-        pendingFrames = 0
-        if wasPlaying { player.play() }
+    private var scheduledEnd: AVAudioFramePosition = 0
+    private var renderedFrames: AVAudioFramePosition {
+        guard let nodeTime = player.lastRenderTime,
+              let time = player.playerTime(forNodeTime: nodeTime), time.isSampleTimeValid else { return 0 }
+        return max(0, time.sampleTime)
     }
+    var pendingFrames: Int { Int(max(0, scheduledEnd - renderedFrames)) }
+    var lowLatency = false
+    var queueLimitFrames: Int { lowLatency ? 5760 : 9600 }
+    var catchUps = 0 // TA4 wire compatibility; destructive queue chasing removed.
+    var fallbacks = 0
     var generation = 0
     var dropped = 0
     var volume: Float = 0.7 { didSet { player.volume = volume } }
-    var completed: ((Int, Int) -> Void)?
     init() { engine.attach(player); engine.connect(player, to: engine.mainMixerNode, format: format) }
     func start() throws { try selectBuiltIn(); try engine.start(); player.volume = volume; player.play() }
-    func stop() { generation += 1; player.stop(); engine.stop(); pendingFrames = 0 }
+    func stop() { generation += 1; player.stop(); engine.stop(); scheduledEnd = 0 }
     func append(_ input: Data) {
-        var data = input
+        let data = input
         guard data.count % 8 == 0, data.count > 0, data.count <= 192000 else { return }
         let frames = data.count / 8
-        if lowLatency && pendingFrames + frames > queueLimitFrames {
-            // Discard stale scheduled audio rather than waiting for it to drain.
-            catchUps += 1
-            flushQueue()
-        } else if pendingFrames + frames > queueLimitFrames { dropped += 1; return }
-        if frames > queueLimitFrames { data = Data(data.suffix(queueLimitFrames * 8)) }
-        let scheduledFrames = data.count / 8
+        let pending = pendingFrames
+        if lowLatency && pending + frames > queueLimitFrames {
+            // Keep all queued samples and the incoming block. If this source or
+            // network cannot sustain the smaller budget, prefer continuous sound.
+            lowLatency = false
+            fallbacks += 1
+        }
+        // A single capture block must remain intact, even if larger than the
+        // nominal budget. Queue growth is still bounded by the wire block limit.
+        if pending > 0 && pending + frames > max(queueLimitFrames, frames) {
+            dropped += 1; return
+        }
+        let scheduledFrames = frames
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(scheduledFrames)), let channels = buffer.floatChannelData else { return }
         buffer.frameLength = AVAudioFrameCount(scheduledFrames)
         data.withUnsafeBytes { raw in
@@ -106,9 +109,9 @@ final class Playback {
                 channels[1][i] = r.isFinite ? max(-1, min(1, r)) : 0
             }
         }
-        pendingFrames += scheduledFrames
-        let g = generation
-        player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in self?.completed?(scheduledFrames, g) }
+        let start = max(scheduledEnd, renderedFrames)
+        scheduledEnd = start + AVAudioFramePosition(scheduledFrames)
+        player.scheduleBuffer(buffer, at: AVAudioTime(sampleTime: start, atRate: 48000), options: [], completionHandler: nil)
     }
     func selectBuiltIn() throws {
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
