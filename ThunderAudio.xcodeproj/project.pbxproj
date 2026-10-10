@@ -1,0 +1,34 @@
+// !$*UTF8*$!
+{ archiveVersion = 1; classes = {}; objectVersion = 56; objects = {
+000000000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
+000000000000000000000065 = {isa = PBXBuildFile; fileRef = 000000000000000000000001; };
+000000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Audio.swift; sourceTree = "<group>"; };
+000000000000000000000066 = {isa = PBXBuildFile; fileRef = 000000000000000000000002; };
+000000000000000000000003 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bridge.swift; sourceTree = "<group>"; };
+000000000000000000000067 = {isa = PBXBuildFile; fileRef = 000000000000000000000003; };
+000000000000000000000004 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Wire.swift; sourceTree = "<group>"; };
+000000000000000000000068 = {isa = PBXBuildFile; fileRef = 000000000000000000000004; };
+000000000000000000000005 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkDetails.swift; sourceTree = "<group>"; };
+000000000000000000000069 = {isa = PBXBuildFile; fileRef = 000000000000000000000005; };
+000000000000000000000006 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transport.swift; sourceTree = "<group>"; };
+00000000000000000000006A = {isa = PBXBuildFile; fileRef = 000000000000000000000006; };
+000000000000000000000007 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalOutput.swift; sourceTree = "<group>"; };
+00000000000000000000006B = {isa = PBXBuildFile; fileRef = 000000000000000000000007; };
+000000000000000000000008 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SleepStatus.swift; sourceTree = "<group>"; };
+00000000000000000000006C = {isa = PBXBuildFile; fileRef = 000000000000000000000008; };
+A00000000000000000000001 = {isa = PBXFileReference; explicitFileType = wrapper.application; path = ThunderAudio.app; sourceTree = BUILT_PRODUCTS_DIR; };
+A00000000000000000000002 = {isa = PBXGroup; children = (A00000000000000000000003, A00000000000000000000004,); sourceTree = "<group>"; };
+A00000000000000000000003 = {isa = PBXGroup; path = Sources; sourceTree = "<group>"; children = (000000000000000000000001,000000000000000000000002,000000000000000000000003,000000000000000000000004,000000000000000000000005,000000000000000000000006,000000000000000000000007,000000000000000000000008,); };
+A00000000000000000000004 = {isa = PBXGroup; name = Products; children = (A00000000000000000000001,); sourceTree = "<group>"; };
+A00000000000000000000005 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (000000000000000000000065,000000000000000000000066,000000000000000000000067,000000000000000000000068,000000000000000000000069,00000000000000000000006A,00000000000000000000006B,00000000000000000000006C,); runOnlyForDeploymentPostprocessing = 0; };
+A00000000000000000000006 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+A00000000000000000000007 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+A00000000000000000000008 = {isa = PBXNativeTarget; buildConfigurationList = A00000000000000000000010; buildPhases = (A00000000000000000000005,A00000000000000000000006,A00000000000000000000007,); buildRules = (); dependencies = (); name = ThunderAudio; productName = ThunderAudio; productReference = A00000000000000000000001; productType = "com.apple.product-type.application"; };
+A00000000000000000000009 = {isa = PBXProject; attributes = {LastUpgradeCheck = 1600; }; buildConfigurationList = A00000000000000000000011; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en,Base,); mainGroup = A00000000000000000000002; productRefGroup = A00000000000000000000004; projectDirPath = ""; projectRoot = ""; targets = (A00000000000000000000008,); };
+A00000000000000000000010 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000012,A00000000000000000000013,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+A00000000000000000000011 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000014,A00000000000000000000015,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+A00000000000000000000012 = {isa = XCBuildConfiguration; name = Debug; buildSettings = {CODE_SIGN_STYLE = Automatic; CODE_SIGN_IDENTITY = "-"; COMBINE_HIDPI_IMAGES = YES; ENABLE_APP_SANDBOX = NO; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Info.plist; MACOSX_DEPLOYMENT_TARGET = 13.0; PRODUCT_BUNDLE_IDENTIFIER = local.thunderaudio.app; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; };
+A00000000000000000000013 = {isa = XCBuildConfiguration; name = Release; buildSettings = {CODE_SIGN_STYLE = Automatic; CODE_SIGN_IDENTITY = "-"; COMBINE_HIDPI_IMAGES = YES; ENABLE_APP_SANDBOX = NO; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Info.plist; MACOSX_DEPLOYMENT_TARGET = 13.0; PRODUCT_BUNDLE_IDENTIFIER = local.thunderaudio.app; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0; SWIFT_OPTIMIZATION_LEVEL = "-O"; }; };
+A00000000000000000000014 = {isa = XCBuildConfiguration; name = Debug; buildSettings = {SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 13.0; CLANG_ENABLE_MODULES = YES; }; };
+A00000000000000000000015 = {isa = XCBuildConfiguration; name = Release; buildSettings = {SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 13.0; CLANG_ENABLE_MODULES = YES; }; };
+}; rootObject = A00000000000000000000009; }
