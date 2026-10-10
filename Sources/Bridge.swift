@@ -4,7 +4,21 @@ import SwiftUI
 import IOKit.pwr_mgt
 import AppKit
 
+private struct QueueReport: Codable {
+    let frames: Int
+    let dropped: Int
+    let catchUps: Int
+}
+
 final class Bridge: ObservableObject {
+    @Published var lowLatency = false { didSet {
+        playback.lowLatency = lowLatency
+        if initialized { preferences.set(lowLatency, forKey: "lowLatency") }
+        if authenticated && !applyingRemoteLatency { send(receiver ? 11 : 10, Data([lowLatency ? 1 : 0])) }
+    } }
+    private var applyingRemoteLatency = false
+    private var remoteQueue: QueueReport?
+    private var remoteQueueAt = Date.distantPast
     @Published var remotePlayback = true { didSet { changeDestination() } }
     @Published var destinationStatus = ""
     @Published var sleepStatus = SleepStatus.description()
@@ -77,6 +91,8 @@ final class Bridge: ObservableObject {
         if preferences.object(forKey: "receiver") != nil { receiver = preferences.bool(forKey: "receiver") }
         if preferences.object(forKey: "rememberSecret") != nil { rememberSecret = preferences.bool(forKey: "rememberSecret") }
         if preferences.object(forKey: "autoConnect") != nil { autoConnect = preferences.bool(forKey: "autoConnect") }
+        lowLatency = preferences.bool(forKey: "lowLatency")
+        playback.lowLatency = lowLatency
         interfaceName = preferences.string(forKey: "interfaceName") ?? "auto"
         host = preferences.string(forKey: "host") ?? ""
         selectedPeerID = preferences.string(forKey: "selectedPeerID") ?? ""
@@ -249,7 +265,7 @@ final class Bridge: ObservableObject {
             switch state {
             case .ready:
                 self.updateRoute(c)
-                if !self.receiver { self.send(1, Data(("TA3:" + self.secret).utf8)) }
+                if !self.receiver { self.send(1, Data(("TA4:" + self.secret).utf8)) }
                 self.read(c, id)
             case .failed(let error): self.disconnect(error.localizedDescription)
             case .waiting(let error): self.disconnect("网络不可用：\(error.localizedDescription)")
@@ -289,13 +305,14 @@ final class Bridge: ObservableObject {
     private func handle(_ kind: UInt8, _ body: Data) throws {
         lastSeen = Date()
         if !authenticated {
-            if receiver && kind == 1 && body == Data(("TA3:" + secret).utf8) {
+            if receiver && kind == 1 && body == Data(("TA4:" + secret).utf8) {
                 try playback.start()
                 authenticated = true; authTimer?.invalidate(); storeCredential(); receiverFailures.removeAll(); send(2)
                 status = "已连接 · 内置扬声器"
             } else if !receiver && kind == 2 && body.isEmpty {
                 authenticated = true; authTimer?.invalidate(); storeCredential(); status = "已连接 · 正在请求系统音频"
                 remoteConfirmed = false
+                send(10, Data([lowLatency ? 1 : 0]))
                 send(8, Data([UInt8((volume * 100).rounded())]))
                 send(6, Data([remotePlayback ? 1 : 0]))
                 beginCapture()
@@ -326,6 +343,21 @@ final class Bridge: ObservableObject {
             volume = Double(body[0]) / 100
             applyingRemoteVolume = false
             if receiver { send(9, body) }
+        case 10, 11:
+            guard (kind == 10) == receiver, body.count == 1, body[0] <= 1 else { disconnect("无效延迟模式"); return }
+            applyingRemoteLatency = true
+            lowLatency = body[0] == 1
+            applyingRemoteLatency = false
+            if receiver { send(11, body) }
+        case 13:
+            guard receiver, body.isEmpty else { disconnect("无效队列查询"); return }
+            let report = QueueReport(frames: playback.pendingFrames, dropped: playback.dropped, catchUps: playback.catchUps)
+            send(12, try JSONEncoder().encode(report))
+        case 12:
+            guard !receiver, body.count <= 256 else { disconnect("无效队列状态"); return }
+            let report = try JSONDecoder().decode(QueueReport.self, from: body)
+            guard (0...24000).contains(report.frames), report.dropped >= 0, report.catchUps >= 0 else { disconnect("无效队列数值"); return }
+            remoteQueue = report; remoteQueueAt = Date()
         case 4: guard body.count == 8 else { disconnect("无效心跳"); return }; send(5, body)
         case 5:
             guard body.count == 8 else { disconnect("无效心跳"); return }
@@ -338,7 +370,7 @@ final class Bridge: ObservableObject {
         let id = attempt; let source = Capture(); capture = source
         source.audio = { [weak self] data in DispatchQueue.main.async {
             guard let self, self.attempt == id, self.authenticated, self.remotePlayback, self.remoteConfirmed else { return }
-            if self.inFlight > 192000 { self.discarded += 1; return }
+            if self.inFlight > (self.lowLatency ? 23040 : 192000) { self.discarded += 1; return }
             self.send(3, data)
         } }
         source.failed = { [weak self] error in DispatchQueue.main.async { if self?.attempt == id { self?.disconnect("采集停止：" + error) } } }
@@ -373,6 +405,7 @@ final class Bridge: ObservableObject {
         }
         attempt = UUID(); authTimer?.invalidate(); connection?.cancel(); connection = nil
         authenticated = false; remoteConfirmed = false; captureReady = false
+        remoteQueue = nil; remoteQueueAt = .distantPast
         incoming.removeAll(); playback.stop()
         do { try localOutput.restore(); destinationStatus = "本机原静音状态已恢复" }
         catch { destinationStatus = "恢复本机静音状态失败，请检查声音设置：\(error.localizedDescription)" }
@@ -403,7 +436,15 @@ final class Bridge: ObservableObject {
                 var stamp = ProcessInfo.processInfo.systemUptime
                 send(4, withUnsafeBytes(of: &stamp) { Data($0) }); pingAt = Date()
             }
-            metrics = String(format: "网络往返 %.1f ms · 本机播放队列 %.0f ms · 丢弃 %d 块", rtt, Double(playback.pendingFrames)/48, playback.dropped + discarded)
+            if !receiver { send(13) }
+            let prefix = String(format: "网络往返 %.1f ms", rtt)
+            if receiver {
+                metrics = prefix + String(format: " · 播放队列估算 %.0f ms · 丢弃 %d 块 · 追赶 %d 次", Double(playback.pendingFrames)/48, playback.dropped, playback.catchUps)
+            } else if let report = remoteQueue, Date().timeIntervalSince(remoteQueueAt) < 3 {
+                metrics = prefix + String(format: " · MacBook 队列估算 %.0f ms · 远端丢弃 %d 块 · 追赶 %d 次 · 发送丢弃 %d 块", Double(report.frames)/48, report.dropped, report.catchUps, discarded)
+            } else {
+                metrics = prefix + " · 等待 MacBook 队列状态"
+            }
         }
     }
     private func changeDestination() {

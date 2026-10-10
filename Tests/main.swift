@@ -13,7 +13,7 @@ func spin(_ seconds: Double, until condition: () -> Bool) -> Bool {
 }
 
 // Arbitrary TCP segmentation and coalescing, not one-packet-per-read assumptions.
-let original = Wire.packet(1, Data("TA3:012345".utf8)) + Wire.packet(3, Data(repeating: 0, count: 4096)) + Wire.packet(4, Data(repeating: 1, count: 8))
+let original = Wire.packet(1, Data("TA4:012345".utf8)) + Wire.packet(3, Data(repeating: 0, count: 4096)) + Wire.packet(4, Data(repeating: 1, count: 8))
 for split in 0...original.count {
     var data = Data(original.prefix(split))
     var messages: [(UInt8, Data)] = []
@@ -54,7 +54,7 @@ if let tls {
     check(sec_protocol_metadata_get_negotiated_tls_protocol_version(tls.securityProtocolMetadata) == .TLSv12, "TLS 1.2 negotiated")
     check(sec_protocol_metadata_get_negotiated_tls_ciphersuite(tls.securityProtocolMetadata).rawValue == 0x00A8, "AES-128-GCM PSK negotiated")
 }
-client.send(content: Wire.packet(1, Data("TA3:012345".utf8)), completion: .contentProcessed { _ in })
+client.send(content: Wire.packet(1, Data("TA4:012345".utf8)), completion: .contentProcessed { _ in })
 var reply = Data()
 client.receive(minimumIncompleteLength: 5, maximumLength: 1024) { data, _, _, _ in if let data { reply = data } }
 check(spin(5) { !reply.isEmpty }, "receiver authentication reply")
@@ -85,6 +85,34 @@ for level: UInt8 in [0, 37, 100] {
     check(packet?.0 == 9 && packet?.1 == Data([level]), "volume acknowledgement matches")
     check(abs(bridge.volume - Double(level) / 100) < 0.001, "remote volume applied")
 }
+for enabled: UInt8 in [1, 0, 1] {
+    var response = Data()
+    client.send(content: Wire.packet(10, Data([enabled])), completion: .contentProcessed { _ in })
+    client.receive(minimumIncompleteLength: 6, maximumLength: 1024) { data, _, _, _ in if let data { response = data } }
+    check(spin(2) { !response.isEmpty }, "latency mode acknowledged")
+    let packet = try Wire.take(&response)
+    check(packet?.0 == 11 && packet?.1 == Data([enabled]), "latency acknowledgement matches")
+    check(bridge.lowLatency == (enabled == 1), "receiver latency mode applied")
+}
+var reportData = Data()
+client.send(content: Wire.packet(13), completion: .contentProcessed { _ in })
+client.receive(minimumIncompleteLength: 5, maximumLength: 1024) { data, _, _, _ in if let data { reportData = data } }
+check(spin(2) { !reportData.isEmpty }, "remote queue report returned")
+let reportPacket = try Wire.take(&reportData)
+check(reportPacket?.0 == 12, "queue report kind")
+let report = try JSONSerialization.jsonObject(with: reportPacket!.1) as! [String: Int]
+check(report["frames"] != nil && report["catchUps"] != nil, "queue telemetry fields")
+let queueTest = Playback()
+try queueTest.start()
+queueTest.lowLatency = true
+queueTest.append(Data(repeating: 0, count: 4800 * 8))
+check(queueTest.pendingFrames == 2880, "oversized low latency block trimmed to 60 ms")
+let oldGeneration = queueTest.generation
+queueTest.append(Data(repeating: 0, count: 960 * 8))
+check(queueTest.pendingFrames == 960 && queueTest.generation > oldGeneration, "stale queue flushed and newest audio kept")
+queueTest.lowLatency = false
+check(queueTest.pendingFrames == 0 && queueTest.queueLimitFrames == 9600, "normal mode clears queue and restores 200 ms cap")
+queueTest.stop()
 selectMode(0)
 check(!bridge.receiverRemoteEnabled, "local mode stops remote player")
 let before = bridge.receiverFrames
@@ -103,7 +131,7 @@ var wrongReady = false
 wrong.stateUpdateHandler = { if case .ready = $0 { wrongReady = true } }
 wrong.start(queue: .main)
 check(spin(3) { wrongReady }, "second TCP connection")
-wrong.send(content: Wire.packet(1, Data("TA3:wrong-password".utf8)), completion: .contentProcessed { _ in })
+wrong.send(content: Wire.packet(1, Data("TA4:wrong-password".utf8)), completion: .contentProcessed { _ in })
 check(spin(3) { bridge.status.contains("口令不匹配") }, "wrong password rejected")
 wrong.cancel()
 check(spin(3) { bridge.status.contains("等待连接") }, "wrong app authentication cleaned up")
@@ -127,7 +155,7 @@ plain.start(queue: .main)
 check(spin(3) { plainReady }, "plaintext TCP socket opened")
 var plainClosed = false
 var plainAuthenticated = false
-plain.send(content: Wire.packet(1, Data("TA3:012345".utf8)), completion: .contentProcessed { _ in })
+plain.send(content: Wire.packet(1, Data("TA4:012345".utf8)), completion: .contentProcessed { _ in })
 plain.receive(minimumIncompleteLength: 1, maximumLength: 1024) { data, _, done, error in
     plainClosed = done || error != nil
     if let data { var d = data; plainAuthenticated = (try? Wire.take(&d))?.0 == 2 }

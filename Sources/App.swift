@@ -16,7 +16,7 @@ struct Panel: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text("ThunderAudio 雷雳音频桥 0.5.1").font(.headline)
+                Text("ThunderAudio 雷雳音频桥 0.6.0").font(.headline)
                 Picker("本机角色", selection: $bridge.receiver) {
                     Text("接收端 · MacBook").tag(true)
                     Text("发送端 · Mac mini").tag(false)
@@ -52,6 +52,9 @@ struct Panel: View {
                 if bridge.receiver || bridge.remotePlayback {
                     HStack { Text(bridge.receiver ? "播放音量" : "MacBook 音量"); Slider(value: $bridge.volume, in: 0...1); Text("\(Int(bridge.volume * 100))%") }
                 }
+                Toggle("低延迟模式", isOn: $bridge.lowLatency)
+                Text(bridge.lowLatency ? "队列上限 60 ms，积压时跳过旧音频；断音时可关闭。" : "普通模式：队列上限 200 ms，优先保持连续播放。")
+                    .font(.caption).foregroundStyle(.secondary)
                 DisclosureGroup("网络与配对选项") {
                     VStack(alignment: .leading, spacing: 10) {
                         Picker("网络接口", selection: $bridge.interfaceName) {

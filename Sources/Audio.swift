@@ -66,6 +66,18 @@ final class Playback {
     let player = AVAudioPlayerNode()
     let format = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 2)!
     var pendingFrames = 0
+    var lowLatency = false { didSet {
+        if lowLatency != oldValue { flushQueue() }
+    } }
+    var queueLimitFrames: Int { lowLatency ? 2880 : 9600 }
+    var catchUps = 0
+    func flushQueue() {
+        generation += 1
+        let wasPlaying = player.isPlaying
+        player.stop()
+        pendingFrames = 0
+        if wasPlaying { player.play() }
+    }
     var generation = 0
     var dropped = 0
     var volume: Float = 0.7 { didSet { player.volume = volume } }
@@ -73,23 +85,30 @@ final class Playback {
     init() { engine.attach(player); engine.connect(player, to: engine.mainMixerNode, format: format) }
     func start() throws { try selectBuiltIn(); try engine.start(); player.volume = volume; player.play() }
     func stop() { generation += 1; player.stop(); engine.stop(); pendingFrames = 0 }
-    func append(_ data: Data) {
+    func append(_ input: Data) {
+        var data = input
         guard data.count % 8 == 0, data.count > 0, data.count <= 192000 else { return }
         let frames = data.count / 8
-        if pendingFrames + frames > 9600 { dropped += 1; return }
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)), let channels = buffer.floatChannelData else { return }
-        buffer.frameLength = AVAudioFrameCount(frames)
+        if lowLatency && pendingFrames + frames > queueLimitFrames {
+            // Discard stale scheduled audio rather than waiting for it to drain.
+            catchUps += 1
+            flushQueue()
+        } else if pendingFrames + frames > queueLimitFrames { dropped += 1; return }
+        if frames > queueLimitFrames { data = Data(data.suffix(queueLimitFrames * 8)) }
+        let scheduledFrames = data.count / 8
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(scheduledFrames)), let channels = buffer.floatChannelData else { return }
+        buffer.frameLength = AVAudioFrameCount(scheduledFrames)
         data.withUnsafeBytes { raw in
-            for i in 0..<frames {
+            for i in 0..<scheduledFrames {
                 let l = raw.loadUnaligned(fromByteOffset: i*8, as: Float.self)
                 let r = raw.loadUnaligned(fromByteOffset: i*8+4, as: Float.self)
                 channels[0][i] = l.isFinite ? max(-1, min(1, l)) : 0
                 channels[1][i] = r.isFinite ? max(-1, min(1, r)) : 0
             }
         }
-        pendingFrames += frames
+        pendingFrames += scheduledFrames
         let g = generation
-        player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in self?.completed?(frames, g) }
+        player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in self?.completed?(scheduledFrames, g) }
     }
     func selectBuiltIn() throws {
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
