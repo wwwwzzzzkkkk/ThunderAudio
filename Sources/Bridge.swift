@@ -29,7 +29,13 @@ final class Bridge: ObservableObject {
     @Published var host = "" { didSet { if initialized { savePreferences(); loadCredential() } } }
     @Published var secret = ""
     @Published var selectedPeerID = "" { didSet { if initialized { host = ""; savePreferences(); loadCredential() } } }
-    @Published var volume: Double = 0.7 { didSet { playback.volume = Float(volume) } }
+    @Published var volume: Double = 0.7 { didSet {
+        playback.volume = Float(volume)
+        if authenticated && !applyingRemoteVolume {
+            send(receiver ? 9 : 8, Data([UInt8((min(1, max(0, volume)) * 100).rounded())]))
+        }
+    } }
+    private var applyingRemoteVolume = false
     @Published var stayAwake = false { didSet { updateAssertion() } }
     private let credentials: CredentialStore
     private let preferences: UserDefaults
@@ -230,7 +236,7 @@ final class Bridge: ObservableObject {
             switch state {
             case .ready:
                 self.updateRoute(c)
-                if !self.receiver { self.send(1, Data(("TA2:" + self.secret).utf8)) }
+                if !self.receiver { self.send(1, Data(("TA3:" + self.secret).utf8)) }
                 self.read(c, id)
             case .failed(let error): self.disconnect(error.localizedDescription)
             case .waiting(let error): self.disconnect("网络不可用：\(error.localizedDescription)")
@@ -270,13 +276,14 @@ final class Bridge: ObservableObject {
     private func handle(_ kind: UInt8, _ body: Data) throws {
         lastSeen = Date()
         if !authenticated {
-            if receiver && kind == 1 && body == Data(("TA2:" + secret).utf8) {
+            if receiver && kind == 1 && body == Data(("TA3:" + secret).utf8) {
                 try playback.start()
                 authenticated = true; authTimer?.invalidate(); storeCredential(); receiverFailures.removeAll(); send(2)
                 status = "已连接 · 内置扬声器"
             } else if !receiver && kind == 2 && body.isEmpty {
                 authenticated = true; authTimer?.invalidate(); storeCredential(); status = "已连接 · 正在请求系统音频"
                 remoteConfirmed = false
+                send(8, Data([UInt8((volume * 100).rounded())]))
                 send(6, Data([remotePlayback ? 1 : 0]))
                 beginCapture()
             } else { disconnect("口令不匹配或协议版本不兼容") }
@@ -300,6 +307,12 @@ final class Bridge: ObservableObject {
                 remoteConfirmed = remotePlayback
                 applyDestination()
             }
+        case 8, 9:
+            guard (kind == 8) == receiver, body.count == 1, body[0] <= 100 else { disconnect("无效音量控制"); return }
+            applyingRemoteVolume = true
+            volume = Double(body[0]) / 100
+            applyingRemoteVolume = false
+            if receiver { send(9, body) }
         case 4: guard body.count == 8 else { disconnect("无效心跳"); return }; send(5, body)
         case 5:
             guard body.count == 8 else { disconnect("无效心跳"); return }

@@ -12,10 +12,11 @@ struct ThunderAudioApp: App {
 }
 struct Panel: View {
     @ObservedObject var bridge: Bridge
+    @State private var contentHeight: CGFloat = 560
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text("ThunderAudio 雷雳音频桥 0.4.1").font(.headline)
+                Text("ThunderAudio 雷雳音频桥 0.5.0").font(.headline)
                 Picker("本机角色", selection: $bridge.receiver) {
                     Text("接收端 · MacBook").tag(true)
                     Text("发送端 · Mac mini").tag(false)
@@ -48,8 +49,8 @@ struct Panel: View {
                 Toggle("记住配对码（系统钥匙串）", isOn: $bridge.rememberSecret)
                 Toggle("打开应用后自动连接 / 接收", isOn: $bridge.autoConnect)
                 Text(bridge.pairingStatus).font(.caption).foregroundStyle(.secondary)
-                if bridge.receiver {
-                    HStack { Text("音量"); Slider(value: $bridge.volume, in: 0...1); Text("\(Int(bridge.volume * 100))%") }
+                if bridge.receiver || bridge.remotePlayback {
+                    HStack { Text(bridge.receiver ? "播放音量" : "MacBook 音量"); Slider(value: $bridge.volume, in: 0...1); Text("\(Int(bridge.volume * 100))%") }
                 }
                 DisclosureGroup("网络与配对选项") {
                     VStack(alignment: .leading, spacing: 10) {
@@ -78,8 +79,20 @@ struct Panel: View {
                     Button("退出") { bridge.stop(); NSApplication.shared.terminate(nil) }
                 }
             }
+            .fixedSize(horizontal: false, vertical: true)
+            .background(GeometryReader { geometry in
+                Color.clear.preference(key: PanelHeightKey.self, value: geometry.size.height)
+            })
         // ScrollView has no intrinsic content height in a MenuBarExtra window.
         // Give the popover a real height while leaving room for the menu bar.
-        }.frame(height: min(640, max(240, (NSScreen.main?.visibleFrame.height ?? 800) - 100)))
+        }.frame(height: min(contentHeight, max(240, (NSScreen.main?.visibleFrame.height ?? 800) - 100)))
+        .onPreferenceChange(PanelHeightKey.self) { height in
+            if height > 0 { contentHeight = height }
+        }
     }
+}
+
+private struct PanelHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 560
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }

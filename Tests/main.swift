@@ -13,7 +13,7 @@ func spin(_ seconds: Double, until condition: () -> Bool) -> Bool {
 }
 
 // Arbitrary TCP segmentation and coalescing, not one-packet-per-read assumptions.
-let original = Wire.packet(1, Data("TA2:012345".utf8)) + Wire.packet(3, Data(repeating: 0, count: 4096)) + Wire.packet(4, Data(repeating: 1, count: 8))
+let original = Wire.packet(1, Data("TA3:012345".utf8)) + Wire.packet(3, Data(repeating: 0, count: 4096)) + Wire.packet(4, Data(repeating: 1, count: 8))
 for split in 0...original.count {
     var data = Data(original.prefix(split))
     var messages: [(UInt8, Data)] = []
@@ -54,7 +54,7 @@ if let tls {
     check(sec_protocol_metadata_get_negotiated_tls_protocol_version(tls.securityProtocolMetadata) == .TLSv12, "TLS 1.2 negotiated")
     check(sec_protocol_metadata_get_negotiated_tls_ciphersuite(tls.securityProtocolMetadata).rawValue == 0x00A8, "AES-128-GCM PSK negotiated")
 }
-client.send(content: Wire.packet(1, Data("TA2:012345".utf8)), completion: .contentProcessed { _ in })
+client.send(content: Wire.packet(1, Data("TA3:012345".utf8)), completion: .contentProcessed { _ in })
 var reply = Data()
 client.receive(minimumIncompleteLength: 5, maximumLength: 1024) { data, _, _, _ in if let data { reply = data } }
 check(spin(5) { !reply.isEmpty }, "receiver authentication reply")
@@ -76,6 +76,15 @@ func selectMode(_ value: UInt8) {
     let packet = try? Wire.take(&modeReply)
     check(packet?.0 == 7 && packet?.1 == Data([value]), "correct mode acknowledgement")
 }
+for level: UInt8 in [0, 37, 100] {
+    var volumeReply = Data()
+    client.send(content: Wire.packet(8, Data([level])), completion: .contentProcessed { _ in })
+    client.receive(minimumIncompleteLength: 6, maximumLength: 1024) { data, _, _, _ in if let data { volumeReply = data } }
+    check(spin(2) { !volumeReply.isEmpty }, "volume acknowledged")
+    let packet = try Wire.take(&volumeReply)
+    check(packet?.0 == 9 && packet?.1 == Data([level]), "volume acknowledgement matches")
+    check(abs(bridge.volume - Double(level) / 100) < 0.001, "remote volume applied")
+}
 selectMode(0)
 check(!bridge.receiverRemoteEnabled, "local mode stops remote player")
 let before = bridge.receiverFrames
@@ -94,7 +103,7 @@ var wrongReady = false
 wrong.stateUpdateHandler = { if case .ready = $0 { wrongReady = true } }
 wrong.start(queue: .main)
 check(spin(3) { wrongReady }, "second TCP connection")
-wrong.send(content: Wire.packet(1, Data("TA2:wrong-password".utf8)), completion: .contentProcessed { _ in })
+wrong.send(content: Wire.packet(1, Data("TA3:wrong-password".utf8)), completion: .contentProcessed { _ in })
 check(spin(3) { bridge.status.contains("口令不匹配") }, "wrong password rejected")
 wrong.cancel()
 check(spin(3) { bridge.status.contains("等待连接") }, "wrong app authentication cleaned up")
@@ -118,7 +127,7 @@ plain.start(queue: .main)
 check(spin(3) { plainReady }, "plaintext TCP socket opened")
 var plainClosed = false
 var plainAuthenticated = false
-plain.send(content: Wire.packet(1, Data("TA2:012345".utf8)), completion: .contentProcessed { _ in })
+plain.send(content: Wire.packet(1, Data("TA3:012345".utf8)), completion: .contentProcessed { _ in })
 plain.receive(minimumIncompleteLength: 1, maximumLength: 1024) { data, _, done, error in
     plainClosed = done || error != nil
     if let data { var d = data; plainAuthenticated = (try? Wire.take(&d))?.0 == 2 }

@@ -2,7 +2,7 @@
 
 <img src="Resources/AppIcon.png" width="128" alt="ThunderAudio 图标">
 
-当前版本：**0.4.1** · Apple Silicon · macOS 13+
+当前版本：**0.5.0** · Apple Silicon · macOS 13+
 
 [下载最新版](https://github.com/wwwwzzzzkkkk/ThunderAudio/releases/latest) · [版本记录](CHANGELOG.md)
 
@@ -34,7 +34,7 @@ Homebrew 会从 GitHub Release 下载带版本号的安装包并校验 SHA-256�
 
 ## v0.2：播放位置切换与合盖提示
 
-**v0.2 起使用 TA2 协议，v0.1 不兼容。** 首次升级时建议两端使用同一新版。若发送端提示采集权限错误，请按 macOS 提示重新授予录制权限。
+**v0.5 使用 TA3 协议，与旧版不兼容，两端均需更新。** 首次升级时建议两端使用同一新版。若发送端提示采集权限错误，请按 macOS 提示重新授予录制权限。
 
 在 **Mac mini 的发送端菜单** 中选择「声音播放位置」：
 
@@ -122,7 +122,7 @@ xcodebuild -project ThunderAudio.xcodeproj -target ThunderAudio -configuration R
 open build/ThunderAudio.app
 ```
 
-脚本使用 Swift 5 语言模式和 macOS 13 deployment target；在临时目录中构建和签名，输出 `build/ThunderAudio.app` 和可分发的 `build/ThunderAudio-0.4.1-macOS-arm64.zip`。只清理临时构建产物的扩展属性，不修改系统设置。推荐通过 ZIP 复制应用，避免云同步文件夹在签名过程中附加 Finder 元数据。二进制是 arm64，不支持 Intel Mac。重建同一 Bundle ID 的临时签名应用后，系统可能要求重新授予录制权限；正式稳定签名可减少身份变化。
+脚本使用 Swift 5 语言模式和 macOS 13 deployment target；在临时目录中构建和签名，输出 `build/ThunderAudio.app` 和可分发的 `build/ThunderAudio-0.5.0-macOS-arm64.zip`。只清理临时构建产物的扩展属性，不修改系统设置。推荐通过 ZIP 复制应用，避免云同步文件夹在签名过程中附加 Finder 元数据。二进制是 arm64，不支持 Intel Mac。重建同一 Bundle ID 的临时签名应用后，系统可能要求重新授予录制权限；正式稳定签名可减少身份变化。
 
 ## 合盖、休眠与唤醒
 
@@ -199,3 +199,6 @@ open build/ThunderAudio.app
 图标的可编辑 SVG 与原生绘制脚本在 `Resources/` 和 `scripts/`。修改后运行 `./scripts/build-icon.sh`，提交 PNG 和 ICNS；正常构建直接使用已提交的 ICNS。
 
 新增源码：`Pairing.swift` 实现登录钥匙串存储、6 位码校验与稳定的 Bonjour 设备标识。
+
+### 0.5 音量控制
+发送端选择 MacBook 播放时，可调整 MacBook 音量；控制的是 ThunderAudio 播放音量，不改变 MacBook 系统总音量或其他应用。接收端调整也同步回发送端。重连时采用发送端滑块值。协议升级为 TA3，两台 Mac 都需更新至 0.5 或以上。
