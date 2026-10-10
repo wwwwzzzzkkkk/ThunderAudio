@@ -48,6 +48,8 @@ final class Bridge: ObservableObject {
     private var browser: NWBrowser?
     private var connection: NWConnection?
     private var monitor = NWPathMonitor()
+    private var pathInterfaces: [NWInterface] = []
+    private var discoveredInterfaces: [NWInterface] = []
     private let playback = Playback()
     private let localOutput = LocalOutput()
     private var remoteConfirmed = false
@@ -90,9 +92,10 @@ final class Bridge: ObservableObject {
             if self.receiver { self.stop(); self.start() } else { self.retryAt = Date() }
         })
         monitor.pathUpdateHandler = { [weak self] path in DispatchQueue.main.async { guard let self else { return }
-            self.interfaces = path.availableInterfaces
+            self.pathInterfaces = path.availableInterfaces
+            self.updateInterfaces()
             if !self.running && !self.suggestedBridge && self.interfaceName == "auto" {
-                let candidates = path.availableInterfaces.filter { NetworkDetails.thunderboltNames().contains($0.name) }
+                let candidates = self.interfaces.filter { NetworkDetails.thunderboltNames().contains($0.name) }
                 if candidates.count == 1 {
                     self.interfaceName = candidates[0].name
                     self.suggestedBridge = true
@@ -166,10 +169,20 @@ final class Bridge: ObservableObject {
         }
         b.browseResultsChangedHandler = { [weak self, weak b] results, _ in
             guard let self, self.browser === b else { return }
+            self.discoveredInterfaces = results.flatMap { $0.interfaces }
+            self.updateInterfaces()
             self.peers = DiscoveredPeer.collect(results)
             self.discoveryStatus = self.peers.isEmpty ? "未发现设备；请在另一台 Mac 启动接收端并允许本地网络访问" : "发现 \(self.peers.count) 台接收端"
         }
         b.start(queue: .main)
+    }
+    private func updateInterfaces() {
+        // The default path may omit a direct Thunderbolt link. Bonjour results
+        // supply public NWInterface objects for the interfaces seeing each peer.
+        var names = Set<String>()
+        interfaces = (pathInterfaces + discoveredInterfaces)
+            .filter { $0.type != .loopback && names.insert($0.name).inserted }
+            .sorted { $0.name < $1.name }
     }
     private func parameters() throws -> NWParameters {
         let p = Transport.parameters(secret: secret)

@@ -2,7 +2,7 @@
 
 <img src="Resources/AppIcon.png" width="128" alt="ThunderAudio 图标">
 
-当前版本：**0.5.0** · Apple Silicon · macOS 13+
+当前版本：**0.5.1** · Apple Silicon · macOS 13+
 
 [下载最新版](https://github.com/wwwwzzzzkkkk/ThunderAudio/releases/latest) · [版本记录](CHANGELOG.md)
 
@@ -122,7 +122,7 @@ xcodebuild -project ThunderAudio.xcodeproj -target ThunderAudio -configuration R
 open build/ThunderAudio.app
 ```
 
-脚本使用 Swift 5 语言模式和 macOS 13 deployment target；在临时目录中构建和签名，输出 `build/ThunderAudio.app` 和可分发的 `build/ThunderAudio-0.5.0-macOS-arm64.zip`。只清理临时构建产物的扩展属性，不修改系统设置。推荐通过 ZIP 复制应用，避免云同步文件夹在签名过程中附加 Finder 元数据。二进制是 arm64，不支持 Intel Mac。重建同一 Bundle ID 的临时签名应用后，系统可能要求重新授予录制权限；正式稳定签名可减少身份变化。
+脚本使用 Swift 5 语言模式和 macOS 13 deployment target；在临时目录中构建和签名，输出 `build/ThunderAudio.app` 和可分发的 `build/ThunderAudio-0.5.1-macOS-arm64.zip`。只清理临时构建产物的扩展属性，不修改系统设置。推荐通过 ZIP 复制应用，避免云同步文件夹在签名过程中附加 Finder 元数据。二进制是 arm64，不支持 Intel Mac。重建同一 Bundle ID 的临时签名应用后，系统可能要求重新授予录制权限；正式稳定签名可减少身份变化。
 
 ## 合盖、休眠与唤醒
 

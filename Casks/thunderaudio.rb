@@ -1,6 +1,6 @@
 cask "thunderaudio" do
-  version "0.5.0"
-  sha256 "bb2fc4c4b3eb939997b816651df79b6b2c8457e55424963f4319b2cc9d02ff32"
+  version "0.5.1"
+  sha256 "a17d11868b6856296030b0961de5509773c0e11c706e9421b33345a49c25ad1b"
 
   url "https://github.com/wwwwzzzzkkkk/ThunderAudio/releases/download/v#{version}/ThunderAudio-#{version}-macOS-arm64.zip"
   name "ThunderAudio"

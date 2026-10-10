@@ -16,7 +16,7 @@ struct Panel: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text("ThunderAudio 雷雳音频桥 0.5.0").font(.headline)
+                Text("ThunderAudio 雷雳音频桥 0.5.1").font(.headline)
                 Picker("本机角色", selection: $bridge.receiver) {
                     Text("接收端 · MacBook").tag(true)
                     Text("发送端 · Mac mini").tag(false)
