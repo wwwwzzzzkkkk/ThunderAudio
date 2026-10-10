@@ -26,7 +26,7 @@ Path("Casks/thunderaudio.rb").write_text('''cask "thunderaudio" do
   homepage "https://github.com/%s"
 
   depends_on arch: :arm64
-  depends_on macos: ">= :ventura"
+  depends_on macos: :ventura
 
   app "ThunderAudio.app"
 

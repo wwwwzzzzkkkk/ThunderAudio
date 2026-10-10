@@ -8,6 +8,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   release:
+    if: github.ref == 'refs/heads/main'
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +29,7 @@ jobs:
       - name: Create checksum and Homebrew definition
         run: |
           archive="build/ThunderAudio-$APP_VERSION-macOS-arm64.zip"
-          shasum -a 256 "$archive" > build/SHA256SUMS.txt
+          (cd build && shasum -a 256 "ThunderAudio-$APP_VERSION-macOS-arm64.zip" > SHA256SUMS.txt)
           python3 scripts/make-cask.py --repo "$GITHUB_REPOSITORY" --version "$APP_VERSION" --archive "$archive"
       - name: Publish versioned assets
         env:
