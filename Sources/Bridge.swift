@@ -10,19 +10,34 @@ final class Bridge: ObservableObject {
     @Published var sleepStatus = SleepStatus.description()
     @Published var receiverFrames = 0
     @Published var receiverRemoteEnabled = true
-    @Published var receiver = true
+    @Published var receiver = true { didSet { if initialized { loadCredential(); savePreferences() } } }
     @Published var running = false
     @Published var status = "未启动"
     @Published var route = "尚未连接"
     @Published var metrics = "等待音频"
-    @Published var peers: [NWBrowser.Result] = []
+    @Published var peers: [DiscoveredPeer] = []
+    @Published var discoveryStatus = "正在搜索局域网中的 ThunderAudio 接收端…"
+    @Published var pairingStatus = ""
+    @Published var rememberSecret = true { didSet {
+        guard initialized else { return }
+        savePreferences()
+        if !rememberSecret { deleteCredential(clearInput: false) }
+    } }
+    @Published var autoConnect = true { didSet { if initialized { savePreferences() } } }
     @Published var interfaces: [NWInterface] = []
     @Published var interfaceName = "auto"
-    @Published var host = ""
+    @Published var host = "" { didSet { if initialized { savePreferences(); loadCredential() } } }
     @Published var secret = ""
-    @Published var selected = -1
+    @Published var selectedPeerID = "" { didSet { if initialized { host = ""; savePreferences(); loadCredential() } } }
     @Published var volume: Double = 0.7 { didSet { playback.volume = Float(volume) } }
     @Published var stayAwake = false { didSet { updateAssertion() } }
+    private let credentials: CredentialStore
+    private let preferences: UserDefaults
+    private var initialized = false
+    private var restoredCredential = false
+    private var pendingAutoStart = false
+    private var receiverFailures: [Date] = []
+    private var receiverBlockedUntil = Date.distantPast
     private var listener: NWListener?
     private var browser: NWBrowser?
     private var connection: NWConnection?
@@ -48,7 +63,18 @@ final class Bridge: ObservableObject {
     private var discarded = 0
     private var suggestedBridge = false
 
-    init() {
+    init(credentials: CredentialStore = KeychainCredentials(), preferences: UserDefaults = .standard) {
+        self.credentials = credentials
+        self.preferences = preferences
+        if preferences.object(forKey: "receiver") != nil { receiver = preferences.bool(forKey: "receiver") }
+        if preferences.object(forKey: "rememberSecret") != nil { rememberSecret = preferences.bool(forKey: "rememberSecret") }
+        if preferences.object(forKey: "autoConnect") != nil { autoConnect = preferences.bool(forKey: "autoConnect") }
+        interfaceName = preferences.string(forKey: "interfaceName") ?? "auto"
+        host = preferences.string(forKey: "host") ?? ""
+        selectedPeerID = preferences.string(forKey: "selectedPeerID") ?? ""
+        loadCredential()
+        if receiver && secret.isEmpty { secret = Pairing.newPIN() }
+        initialized = true
         observations.append(NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in self?.stop() })
         observations.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self, self.running else { return }; self.disconnect("系统即将休眠，音频暂停")
@@ -73,12 +99,71 @@ final class Bridge: ObservableObject {
                 self.playback.pendingFrames = max(0, self.playback.pendingFrames - frames)
             }
         }
-        browser = NWBrowser(for: .bonjour(type: "_thunderaudio._tcp", domain: nil), using: .tcp)
-        browser?.browseResultsChangedHandler = { [weak self] results, _ in
-            self?.peers = results.sorted { String(describing: $0.endpoint) < String(describing: $1.endpoint) }
-        }
-        browser?.start(queue: .main)
+        refreshDiscovery()
+        pendingAutoStart = autoConnect && rememberSecret && restoredCredential && preferences.bool(forKey: "configured")
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.tick() }
+    }
+    private var credentialAccount: String {
+        if receiver { return "receiver" }
+        let manual = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return manual.isEmpty ? "peer:" + selectedPeerID : "host:" + manual
+    }
+    private func savePreferences() {
+        preferences.set(receiver, forKey: "receiver")
+        preferences.set(rememberSecret, forKey: "rememberSecret")
+        preferences.set(autoConnect, forKey: "autoConnect")
+        preferences.set(interfaceName, forKey: "interfaceName")
+        preferences.set(host, forKey: "host")
+        preferences.set(selectedPeerID, forKey: "selectedPeerID")
+    }
+    private func loadCredential() {
+        restoredCredential = false
+        guard rememberSecret else { secret = ""; return }
+        do {
+            secret = try credentials.read(account: credentialAccount) ?? ""
+            restoredCredential = !secret.isEmpty
+            pairingStatus = secret.isEmpty ? "首次连接请输入接收端配对码" : "已从钥匙串读取保存的配对码"
+        } catch { secret = ""; pairingStatus = "无法读取钥匙串，请手动输入：\(error.localizedDescription)" }
+    }
+    private func storeCredential() {
+        guard rememberSecret else { return }
+        do {
+            try credentials.save(secret, account: credentialAccount)
+            preferences.set(true, forKey: "configured")
+            pairingStatus = "配对码已安全保存，下次无需重新输入"
+        } catch { pairingStatus = "连接可继续，但配对码保存失败：\(error.localizedDescription)" }
+    }
+    func forgetCredential() {
+        rememberSecret = false
+        deleteCredential(clearInput: true)
+    }
+    private func deleteCredential(clearInput: Bool) {
+        do {
+            try credentials.remove(account: credentialAccount)
+            pairingStatus = "已忘记当前设备的配对码"
+            preferences.set(false, forKey: "configured")
+            // Leave the current session intact; clear the input when stopped.
+            if clearInput && !running { secret = "" }
+        } catch { pairingStatus = "无法删除配对记录：\(error.localizedDescription)" }
+    }
+    func refreshDiscovery() {
+        browser?.cancel()
+        let b = NWBrowser(for: .bonjour(type: "_thunderaudio._tcp", domain: nil), using: .tcp)
+        browser = b
+        b.stateUpdateHandler = { [weak self, weak b] state in
+            guard let self, self.browser === b else { return }
+            switch state {
+            case .waiting(let error), .failed(let error):
+                self.discoveryStatus = "搜索不可用，请检查本地网络权限：\(error.localizedDescription)"
+            default: break
+            }
+        }
+        b.browseResultsChangedHandler = { [weak self, weak b] results, _ in
+            guard let self, self.browser === b else { return }
+            self.peers = DiscoveredPeer.collect(results)
+            self.discoveryStatus = self.peers.isEmpty ? "未发现设备；请在另一台 Mac 启动接收端并允许本地网络访问" : "发现 \(self.peers.count) 台接收端"
+        }
+        b.start(queue: .main)
     }
     private func parameters() throws -> NWParameters {
         let p = Transport.parameters(secret: secret)
@@ -90,8 +175,11 @@ final class Bridge: ObservableObject {
         return p
     }
     func start() {
+        pendingAutoStart = false
         guard !running else { return }
-        guard secret.utf8.count >= 16, secret.utf8.count <= 128 else { status = "连接口令需要 16–128 个 UTF-8 字节"; return }
+        guard Pairing.isValid(secret) else { status = "请输入 6 位数字配对码，或 16–128 字节长口令"; return }
+        savePreferences()
+
         do {
             let p = try parameters()
             if receiver {
@@ -100,20 +188,21 @@ final class Bridge: ObservableObject {
                 l.newConnectionHandler = { [weak self] c in
                     guard let self, self.running else { c.cancel(); return }
                     // One active sender; never replace a live session with an unsolicited connection.
-                    guard self.connection == nil else { c.cancel(); return }
+                    guard self.connection == nil, Date() >= self.receiverBlockedUntil else { c.cancel(); return }
                     self.install(c)
                 }
                 l.stateUpdateHandler = { [weak self] state in
                     if case .failed(let error) = state { self?.stop(); self?.status = "监听失败：\(error.localizedDescription)" }
                 }
                 listener = l; l.start(queue: .main)
-                status = "等待发送端（端口 49731）"
+                status = "等待发送端 · 可在局域网中发现"
+                storeCredential()
             } else {
                 if !host.trimmingCharacters(in: .whitespaces).isEmpty {
                     target = .hostPort(host: NWEndpoint.Host(host.trimmingCharacters(in: .whitespaces)), port: 49731)
                 } else {
-                    guard peers.indices.contains(selected) else { status = "请选择接收端或填写 IP"; return }
-                    target = peers[selected].endpoint
+                    guard let peer = DiscoveredPeer.decode(selectedPeerID) else { status = "请选择接收端或填写 IP"; return }
+                    target = peer.endpoint
                 }
                 running = true
                 connect()
@@ -183,10 +272,10 @@ final class Bridge: ObservableObject {
         if !authenticated {
             if receiver && kind == 1 && body == Data(("TA2:" + secret).utf8) {
                 try playback.start()
-                authenticated = true; authTimer?.invalidate(); send(2)
+                authenticated = true; authTimer?.invalidate(); storeCredential(); receiverFailures.removeAll(); send(2)
                 status = "已连接 · 内置扬声器"
             } else if !receiver && kind == 2 && body.isEmpty {
-                authenticated = true; authTimer?.invalidate(); status = "已连接 · 正在请求系统音频"
+                authenticated = true; authTimer?.invalidate(); storeCredential(); status = "已连接 · 正在请求系统音频"
                 remoteConfirmed = false
                 send(6, Data([remotePlayback ? 1 : 0]))
                 beginCapture()
@@ -251,6 +340,11 @@ final class Bridge: ObservableObject {
         })
     }
     private func disconnect(_ reason: String) {
+        if receiver && !authenticated && connection != nil {
+            receiverFailures = receiverFailures.filter { Date().timeIntervalSince($0) < 60 }
+            receiverFailures.append(Date())
+            if receiverFailures.count >= 5 { receiverBlockedUntil = Date().addingTimeInterval(30) }
+        }
         attempt = UUID(); authTimer?.invalidate(); connection?.cancel(); connection = nil
         authenticated = false; remoteConfirmed = false; captureReady = false
         incoming.removeAll(); playback.stop()
@@ -260,14 +354,20 @@ final class Bridge: ObservableObject {
         Task { await old?.stop() }
         route = "未连接"
         status = receiver ? "等待连接 · \(reason)" : "3 秒后重连 · \(reason)"
+        if receiver && running && Date() < receiverBlockedUntil { status += "（多次验证失败，新连接暂停约 30 秒）" }
         retryAt = Date().addingTimeInterval(3)
     }
     func stop() {
+        pendingAutoStart = false
         running = false; target = nil; listener?.cancel(); listener = nil
         disconnect("已停止"); status = "已停止"; metrics = "等待音频"; updateAssertion()
     }
     private func tick() {
         if receiver { sleepStatus = SleepStatus.description() }
+        if pendingAutoStart && !running {
+            if interfaceName == "auto" || interfaces.contains(where: { $0.name == interfaceName }) { start() }
+            else { status = "等待已保存的网络接口 \(interfaceName)；不会回退到其他网络" }
+        }
         guard running else { return }
         if !receiver && captureReady && remoteConfirmed && remotePlayback { applyDestination() }
         if connection == nil, !receiver, Date() >= retryAt { connect() }
