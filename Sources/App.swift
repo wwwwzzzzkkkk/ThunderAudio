@@ -15,7 +15,7 @@ struct Panel: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text("ThunderAudio 雷雳音频桥 0.4").font(.headline)
+                Text("ThunderAudio 雷雳音频桥 0.4.1").font(.headline)
                 Picker("本机角色", selection: $bridge.receiver) {
                     Text("接收端 · MacBook").tag(true)
                     Text("发送端 · Mac mini").tag(false)
@@ -78,6 +78,8 @@ struct Panel: View {
                     Button("退出") { bridge.stop(); NSApplication.shared.terminate(nil) }
                 }
             }
-        }.frame(maxHeight: 740)
+        // ScrollView has no intrinsic content height in a MenuBarExtra window.
+        // Give the popover a real height while leaving room for the menu bar.
+        }.frame(height: min(640, max(240, (NSScreen.main?.visibleFrame.height ?? 800) - 100)))
     }
 }
